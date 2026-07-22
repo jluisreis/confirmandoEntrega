@@ -163,9 +163,14 @@ function _listarEntregas(params) {
         return false; // Ignora qualquer outro status
       }
 
-      // Só pedidos feitos a partir de 01/06 (inclusive).
-      const dataPedido = _paraDataEntregas(o._dataRaw);
-      if (!dataPedido || dataPedido < DATA_CORTE_ENTREGAS) return false;
+      // 🔥 ALTERADO: o pedido aparece no painel se ELE JÁ FOI ENTREGUE
+      // (ENTREGUE ou RETIRADA, não importa a data) OU se foi feito a partir
+      // de 01/06 (inclusive). Antes, mesmo pedidos já entregues sumiam do
+      // painel se a DATA do pedido fosse anterior a 01/06.
+      const dataPedido  = _paraDataEntregas(o._dataRaw);
+      const jaEntregue  = (logistica === LOGISTICA_ENTREGUE || logistica === LOGISTICA_RETIRADA);
+      const dataValida  = Boolean(dataPedido) && dataPedido >= DATA_CORTE_ENTREGAS;
+      if (!jaEntregue && !dataValida) return false;
 
       // Filtro opcional por NÍVEL ENTREGA
       if (nivelFiltro &&
