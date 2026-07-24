@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   CheckCircle2,
   Search,
   Package,
@@ -13,6 +14,7 @@ import {
   X,
   WifiOff,
   UploadCloud,
+  Users,
 } from 'lucide-react'
 import {
   fetchPedidos,
@@ -104,6 +106,11 @@ export default function DataTable() {
   // 🔥 NOVO: filtro de status acionado ao clicar nos cards Pendentes/Entregues
   const [statusFiltro, setStatusFiltro] = useState<'todos' | 'pendentes' | 'entregues'>('todos')
 
+  // 🔥 NOVO: filtro por vendedor(es) — permite selecionar mais de um
+  const [vendedoresFiltro, setVendedoresFiltro] = useState<string[]>([])
+  const [vendedorMenuAberto, setVendedorMenuAberto] = useState(false)
+  const vendedorMenuRef = useRef<HTMLDivElement>(null)
+
   const [dialogPedido, setDialogPedido] = useState<Pedido | null>(null)
   const [modoManual, setModoManual] = useState(false)
   const [manualData, setManualData] = useState('')
@@ -180,6 +187,28 @@ export default function DataTable() {
 
   // ── busca ────────────────────────────────────────────────────────────
 
+  // 🔥 NOVO: fecha o menu de vendedores ao clicar fora dele
+  useEffect(() => {
+    if (!vendedorMenuAberto) return
+    function handleClickFora(e: MouseEvent) {
+      if (vendedorMenuRef.current && !vendedorMenuRef.current.contains(e.target as Node)) {
+        setVendedorMenuAberto(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickFora)
+    return () => document.removeEventListener('mousedown', handleClickFora)
+  }, [vendedorMenuAberto])
+
+  // 🔥 NOVO: lista de vendedores únicos, para popular o filtro
+  const vendedoresDisponiveis = useMemo(() => {
+    const nomes = new Set<string>()
+    pedidos.forEach((p) => {
+      const nome = String(p.VENDEDOR ?? '').trim()
+      if (nome) nomes.add(nome)
+    })
+    return Array.from(nomes).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [pedidos])
+
   // 🔥 ALTERADO: renomeado de filteredData para baseFiltered. Contém a busca
   // + filtro de datas, sem o filtro de status (Pendentes/Entregues). Os
   // cards de contagem usam este, para não "zerar" quando um card estiver
@@ -215,7 +244,11 @@ export default function DataTable() {
         if (ateDate && dp > ateDate) return false
         return true
       })
-  }, [pedidos, searchTerm, filtroDe, filtroAte])
+      .filter((p) => {
+        if (vendedoresFiltro.length === 0) return true
+        return vendedoresFiltro.includes(String(p.VENDEDOR ?? '').trim())
+      })
+  }, [pedidos, searchTerm, filtroDe, filtroAte, vendedoresFiltro])
 
   // 🔥 NOVO: aplica o filtro de status (Pendentes/Entregues) por cima da
   // busca + filtro de datas. É este que alimenta a tabela/lista de cards.
@@ -456,6 +489,78 @@ export default function DataTable() {
             Limpar datas
           </button>
         )}
+
+        {/* 🔥 NOVO: filtro por vendedor (multi-seleção) */}
+        <div className="space-y-1 relative" ref={vendedorMenuRef}>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Vendedor</label>
+          <button
+            type="button"
+            onClick={() => setVendedorMenuAberto((v) => !v)}
+            className={`flex items-center gap-2 w-56 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border text-sm text-left transition-all ${
+              vendedoresFiltro.length > 0
+                ? 'border-blue-500 ring-2 ring-blue-500/20 text-slate-800 dark:text-slate-100'
+                : 'border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            <Users className="w-4 h-4 flex-shrink-0" />
+            <span className="flex-1 truncate">
+              {vendedoresFiltro.length === 0
+                ? 'Todos os vendedores'
+                : vendedoresFiltro.length === 1
+                  ? vendedoresFiltro[0]
+                  : `${vendedoresFiltro.length} vendedores selecionados`}
+            </span>
+            <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${vendedorMenuAberto ? 'rotate-180' : ''}`} />
+          </button>
+
+          {vendedorMenuAberto && (
+            <div className="absolute z-10 mt-1 w-64 max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setVendedoresFiltro([...vendedoresDisponiveis])}
+                  className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Selecionar todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVendedoresFiltro([])}
+                  className="text-xs font-medium text-slate-500 dark:text-slate-400 hover:underline"
+                >
+                  Limpar
+                </button>
+              </div>
+              {vendedoresDisponiveis.length === 0 ? (
+                <p className="px-3 py-3 text-xs text-slate-400">Nenhum vendedor encontrado.</p>
+              ) : (
+                <ul className="py-1">
+                  {vendedoresDisponiveis.map((nome) => {
+                    const marcado = vendedoresFiltro.includes(nome)
+                    return (
+                      <li key={nome}>
+                        <label className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={marcado}
+                            onChange={() => {
+                              setVendedoresFiltro((atual) =>
+                                marcado ? atual.filter((v) => v !== nome) : [...atual, nome]
+                              )
+                              setCurrentPage(1)
+                            }}
+                            className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500/30"
+                          />
+                          <span className="truncate">{nome}</span>
+                        </label>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Offline / usando cache local */}
@@ -529,13 +634,15 @@ export default function DataTable() {
         <div className="text-center py-16 text-slate-400 text-sm">
           {searchTerm
             ? 'Nenhum pedido encontrado.'
-            : statusFiltro === 'pendentes'
-              ? 'Nenhum pedido pendente no momento.'
-              : statusFiltro === 'entregues'
-                ? 'Nenhum pedido entregue no momento.'
-                : temFiltroData
-                  ? 'Nenhum pedido no intervalo de datas selecionado.'
-                  : 'Nenhum pedido cadastrado.'}
+            : vendedoresFiltro.length > 0
+              ? 'Nenhum pedido para os vendedores selecionados.'
+              : statusFiltro === 'pendentes'
+                ? 'Nenhum pedido pendente no momento.'
+                : statusFiltro === 'entregues'
+                  ? 'Nenhum pedido entregue no momento.'
+                  : temFiltroData
+                    ? 'Nenhum pedido no intervalo de datas selecionado.'
+                    : 'Nenhum pedido cadastrado.'}
         </div>
       )}
 
